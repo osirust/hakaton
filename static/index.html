@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PII Shield — Альфа-Банк Proxy</title>
+    <meta name="description" content="Real-time PII masking proxy for banking AI assistants">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --bg-card-hover: rgba(255, 255, 255, 0.06);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-border-accent: rgba(239, 68, 68, 0.3);
+            --text-primary: #e4e4e7;
+            --text-secondary: #a1a1aa;
+            --text-muted: #52525b;
+            --accent-red: #ef4444;
+            --accent-red-soft: rgba(239, 68, 68, 0.15);
+            --accent-green: #22c55e;
+            --accent-green-soft: rgba(34, 197, 94, 0.15);
+            --accent-blue: #3b82f6;
+            --accent-blue-soft: rgba(59, 130, 246, 0.15);
+            --accent-yellow: #eab308;
+            --accent-yellow-soft: rgba(234, 179, 8, 0.15);
+            --accent-purple: #a855f7;
+            --accent-purple-soft: rgba(168, 85, 247, 0.15);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .bg-gradient {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background:
+                radial-gradient(ellipse 600px 400px at 20% 20%, rgba(239, 68, 68, 0.06) 0%, transparent 70%),
+                radial-gradient(ellipse 500px 500px at 80% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 70%),
+                radial-gradient(ellipse 400px 300px at 50% 50%, rgba(168, 85, 247, 0.04) 0%, transparent 70%);
+            animation: bgShift 20s ease-in-out infinite alternate;
+        }
+
+        @keyframes bgShift {
+            0% { transform: scale(1) rotate(0deg); }
+            100% { transform: scale(1.1) rotate(2deg); }
+        }
+
+        .app {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            grid-template-rows: auto 1fr auto;
+            height: 100vh;
+            gap: 0;
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            padding: 16px 28px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border-bottom: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            background: rgba(10, 10, 15, 0.8);
+        }
+
+        .logo {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent-red), #b91c1c);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+        }
+
+        .header-title {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.3px;
+        }
+
+        .header-title span {
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        .status-badge {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: var(--accent-green-soft);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--accent-green);
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        .chat-area {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-right: 1px solid var(--glass-border);
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            scroll-behavior: smooth;
+        }
+
+        .messages::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .messages::-webkit-scrollbar-thumb {
+            background: var(--glass-border);
+            border-radius: 4px;
+        }
+
+        .message {
+            max-width: 85%;
+            padding: 14px 18px;
+            border-radius: var(--radius);
+            line-height: 1.6;
+            font-size: 14px;
+            animation: msgAppear 0.3s ease-out;
+        }
+
+        @keyframes msgAppear {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.08));
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            background: var(--bg-card);
+            border: 1px solid var(--glass-border);
+        }
+
+        .message .label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            color: var(--text-muted);
+        }
+
+        .message.user .label { color: var(--accent-red); }
+        .message.assistant .label { color: var(--accent-blue); }
+
+        .typing-indicator {
+            display: inline-flex;
+            gap: 4px;
+            padding: 4px 0;
+        }
+
+        .typing-indicator span {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-6px); opacity: 1; }
+        }
+
+        .input-area {
+            padding: 16px 28px 20px;
+            border-top: 1px solid var(--glass-border);
+            border-right: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            background: rgba(10, 10, 15, 0.6);
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        #message-input {
+            flex: 1;
+            background: var(--bg-card);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 14px 18px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 14px;
+            resize: none;
+            min-height: 48px;
+            max-height: 120px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        #message-input:focus {
+            border-color: rgba(239, 68, 68, 0.4);
+        }
+
+        #message-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        #send-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            border: none;
+            background: linear-gradient(135deg, var(--accent-red), #b91c1c);
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s, box-shadow 0.15s;
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+            flex-shrink: 0;
+        }
+
+        #send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+        }
+
+        #send-btn:active {
+            transform: scale(0.95);
+        }
+
+        #send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-secondary);
+        }
+
+        .sidebar-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--glass-border);
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sidebar-header .icon {
+            font-size: 16px;
+        }
+
+        .log-entries {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .log-entries::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .log-entries::-webkit-scrollbar-thumb {
+            background: var(--glass-border);
+            border-radius: 4px;
+        }
+
+        .log-entry {
+            background: var(--bg-card);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 14px;
+            animation: msgAppear 0.3s ease-out;
+        }
+
+        .log-entry-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .log-entry-time {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .log-entry-count {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: var(--accent-red-soft);
+            color: var(--accent-red);
+        }
+
+        .log-masked-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+            background: rgba(0,0,0,0.3);
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            line-height: 1.5;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+        }
+
+        .log-entities {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .entity-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .entity-token {
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .entity-token.PHONE  { background: var(--accent-blue-soft); color: var(--accent-blue); }
+        .entity-token.PER    { background: var(--accent-purple-soft); color: var(--accent-purple); }
+        .entity-token.LOC    { background: var(--accent-green-soft); color: var(--accent-green); }
+        .entity-token.ORG    { background: var(--accent-yellow-soft); color: var(--accent-yellow); }
+        .entity-token.PASSPORT,
+        .entity-token.SNILS,
+        .entity-token.INN,
+        .entity-token.CARD   { background: var(--accent-red-soft); color: var(--accent-red); }
+        .entity-token.EMAIL  { background: var(--accent-blue-soft); color: var(--accent-blue); }
+        .entity-token.DATE   { background: var(--accent-yellow-soft); color: var(--accent-yellow); }
+        .entity-token.OMS,
+        .entity-token.ACCOUNT,
+        .entity-token.DRIVER_LICENSE { background: var(--accent-red-soft); color: var(--accent-red); }
+
+        .latency-badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+        }
+        .latency-badge.fast {
+            background: var(--accent-green-soft);
+            color: var(--accent-green);
+        }
+        .latency-badge.medium {
+            background: var(--accent-yellow-soft);
+            color: var(--accent-yellow);
+        }
+        .latency-badge.slow {
+            background: var(--accent-red-soft);
+            color: var(--accent-red);
+        }
+
+        .entity-arrow {
+            color: var(--text-muted);
+        }
+
+        .entity-value {
+            color: var(--text-secondary);
+            word-break: break-all;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            gap: 12px;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 40px;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            opacity: 0.3;
+        }
+
+        .empty-state p {
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .examples {
+            padding: 0 28px 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .example-chip {
+            font-size: 12px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--glass-border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .example-chip:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: var(--text-primary);
+        }
+
+        @media (max-width: 900px) {
+            .app {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr auto auto;
+            }
+            .sidebar {
+                max-height: 250px;
+                border-top: 1px solid var(--glass-border);
+            }
+            .chat-area { border-right: none; }
+            .input-area { border-right: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-gradient"></div>
+
+    <div class="app">
+        <header class="header">
+            <div class="logo">α</div>
+            <div class="header-title">PII Shield <span>· Proxy</span></div>
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                Защита активна
+            </div>
+        </header>
+
+        <div class="chat-area">
+            <div class="messages" id="messages">
+                <div class="empty-state" id="empty-state">
+                    <div class="icon">🛡️</div>
+                    <p>Отправьте сообщение с персональными данными.<br>Прокси автоматически замаскирует их перед отправкой в LLM.</p>
+                </div>
+            </div>
+            <div class="examples" id="examples">
+                <div class="example-chip" data-text="Привет, я Иванов Иван, мой телефон +7 999 123-45-67, заблокируй карту.">
+                    📱 Телефон + ФИО
+                </div>
+                <div class="example-chip" data-text="Меня зовут Петрова Мария Сергеевна, паспорт 4510 123456, СНИЛС 123-456-789 00. Хочу открыть вклад.">
+                    🪪 Паспорт + СНИЛС
+                </div>
+                <div class="example-chip" data-text="Переведите 1000₽ на карту 4276 1234 5678 9010, получатель Сидоров Алексей, email sidorov@mail.ru">
+                    💳 Карта + Email
+                </div>
+                <div class="example-chip" data-text="Я Козлова Анна, дата рождения 15.03.1990, ИНН 1234567890. Живу в Санкт-Петербурге, работаю в Газпроме.">
+                    🏢 Полный набор ПДн
+                </div>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <div class="input-wrapper">
+                <textarea
+                    id="message-input"
+                    placeholder="Введите сообщение с ПДн для маскирования..."
+                    rows="1"
+                ></textarea>
+                <button id="send-btn" title="Отправить">➤</button>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <span class="icon">🔍</span>
+                Журнал маскирования
+            </div>
+            <div class="log-entries" id="log-entries">
+                <div class="empty-state" id="log-empty">
+                    <div class="icon">📋</div>
+                    <p>Здесь будут отображаться найденные персональные данные и их маски</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const messagesEl = document.getElementById('messages');
+        const logEntriesEl = document.getElementById('log-entries');
+        const inputEl = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const emptyState = document.getElementById('empty-state');
+        const logEmpty = document.getElementById('log-empty');
+        const examplesEl = document.getElementById('examples');
+
+        let isStreaming = false;
+
+        inputEl.addEventListener('input', () => {
+            inputEl.style.height = 'auto';
+            inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+        });
+
+        inputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        sendBtn.addEventListener('click', sendMessage);
+
+        examplesEl.querySelectorAll('.example-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                inputEl.value = chip.dataset.text;
+                inputEl.style.height = 'auto';
+                inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+                inputEl.focus();
+            });
+        });
+
+        function addMessage(text, role) {
+            if (emptyState) emptyState.remove();
+            const msg = document.createElement('div');
+            msg.className = `message ${role}`;
+            msg.innerHTML = `<div class="label">${role === 'user' ? 'Вы' : 'Ассистент'}</div><div class="content">${escapeHtml(text)}</div>`;
+            messagesEl.appendChild(msg);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+            return msg;
+        }
+
+        function createStreamingMessage() {
+            if (emptyState) emptyState.remove();
+            const msg = document.createElement('div');
+            msg.className = 'message assistant';
+            msg.innerHTML = `<div class="label">Ассистент</div><div class="content"><div class="typing-indicator"><span></span><span></span><span></span></div></div>`;
+            messagesEl.appendChild(msg);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+            return msg;
+        }
+
+        function getEntityType(token) {
+            const match = token.match(/^\[([A-Z]+)_\d+\]$/);
+            return match ? match[1] : 'UNKNOWN';
+        }
+
+        function addLogEntry(maskedText, entities, maskingTimeMs) {
+            if (logEmpty) logEmpty.remove();
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+
+            const now = new Date().toLocaleTimeString('ru-RU');
+
+            let latencyClass = 'fast';
+            if (maskingTimeMs > 500) latencyClass = 'slow';
+            else if (maskingTimeMs > 100) latencyClass = 'medium';
+
+            let entitiesHtml = '';
+            entities.forEach(e => {
+                const type = getEntityType(e.token);
+                entitiesHtml += `
+                    <div class="entity-row">
+                        <span class="entity-token ${type}">${escapeHtml(e.token)}</span>
+                        <span class="entity-arrow">→</span>
+                        <span class="entity-value">${escapeHtml(e.original)}</span>
+                    </div>`;
+            });
+
+            entry.innerHTML = `
+                <div class="log-entry-header">
+                    <span class="log-entry-time">${now}</span>
+                    <span class="latency-badge ${latencyClass}">⚡ ${maskingTimeMs} мс</span>
+                    <span class="log-entry-count">${entities.length} сущ.</span>
+                </div>
+                <div class="log-masked-text">${escapeHtml(maskedText)}</div>
+                <div class="log-entities">${entitiesHtml || '<span style="color:var(--text-muted);font-size:12px">ПДн не обнаружены</span>'}</div>`;
+
+            logEntriesEl.prepend(entry);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function sendMessage() {
+            const text = inputEl.value.trim();
+            if (!text || isStreaming) return;
+
+            isStreaming = true;
+            sendBtn.disabled = true;
+            inputEl.value = '';
+            inputEl.style.height = 'auto';
+
+            addMessage(text, 'user');
+
+            const streamMsg = createStreamingMessage();
+            const contentEl = streamMsg.querySelector('.content');
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text }),
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let firstToken = true;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const jsonStr = line.slice(6);
+                        if (!jsonStr) continue;
+
+                        try {
+                            const data = JSON.parse(jsonStr);
+
+                            if (data.type === 'meta') {
+                                addLogEntry(data.masked_text, data.entities_found, data.masking_time_ms || 0);
+                            } else if (data.type === 'token') {
+                                if (firstToken) {
+                                    contentEl.textContent = '';
+                                    firstToken = false;
+                                }
+                                contentEl.textContent += data.content;
+                                messagesEl.scrollTop = messagesEl.scrollHeight;
+                            } else if (data.type === 'done') {
+                            }
+                        } catch (parseErr) {
+                        }
+                    }
+                }
+            } catch (err) {
+                contentEl.textContent = `Ошибка: ${err.message}`;
+                contentEl.style.color = 'var(--accent-red)';
+            }
+
+            isStreaming = false;
+            sendBtn.disabled = false;
+            inputEl.focus();
+        }
+    </script>
+</body>
+</html>
